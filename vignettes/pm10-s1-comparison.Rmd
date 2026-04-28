@@ -1,0 +1,106 @@
+---
+title: "Comparing UK and GAM for PM10 in Seoul, January S1"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Comparing UK and GAM for PM10 in Seoul, January S1}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 8,
+                      fig.height = 6)
+```
+
+```{r packages}
+library(aqsurface)
+library(sf)
+library(terra)
+```
+
+## Data
+
+Stations and pollutants are loaded from the legacy archives that ship
+with the original analysis. We split monitors into a training set
+(Fixed background sites) and a held-out set (Road sites).
+
+```{r data, eval = FALSE}
+data_dir <- "../Code/Data"
+stations <- make_station_sf(file.path(data_dir, "stations_10km.shp"))
+parts    <- split_stations(stations)
+
+train_pm10 <- load_pollutant(
+  file.path(data_dir, "pm10.RData"),
+  season = "winter", station_type = "bk",
+  stations = parts$train
+)
+
+targets <- decade_columns("pm10", month = 1, decade = "S1")
+grid    <- build_prediction_grid(train_pm10, n_x = 200, n_y = 200)
+```
+
+## Universal kriging
+
+```{r uk, eval = FALSE}
+uk <- predict_surface_batch(
+  data    = train_pm10,
+  targets = targets,
+  newgrid = grid,
+  method  = "uk",
+  trend   = "const",
+  cutoff  = 30000,
+  width   = 3000,
+  model   = "Ste"
+)
+
+plot_variogram_grid(uk$models, ncol = 5)
+plot_surface_facet(uk$pred, boundary = NULL, limits = c(0, 150), ncol = 5)
+```
+
+## GAM
+
+```{r gam, eval = FALSE}
+gam <- predict_surface_batch(
+  data    = train_pm10,
+  targets = targets,
+  newgrid = grid,
+  method  = "gam",
+  smooth  = "tp",
+  method  = "REML"
+)
+
+plot_surface_facet(gam$pred, limits = c(0, 150), ncol = 5)
+```
+
+## Validation against Road monitors
+
+```{r validation, eval = FALSE}
+holdout_pm10 <- load_pollutant(
+  file.path(data_dir, "pm10.RData"),
+  season = "winter", station_type = "rd",
+  stations = parts$holdout
+)
+
+uk_long  <- extract_at_stations(uk$pred,  holdout_pm10, targets)
+gam_long <- extract_at_stations(gam$pred, holdout_pm10, targets)
+
+uk_metrics  <- compute_metrics(uk_long,  by = "target")
+gam_metrics <- compute_metrics(gam_long, by = "target")
+
+dplyr::bind_rows(
+  dplyr::mutate(uk_metrics,  method = "UK"),
+  dplyr::mutate(gam_metrics, method = "GAM")
+)
+```
+
+## Road-side post-processing (legacy comparison)
+
+```{r road, eval = FALSE}
+ratio_tbl <- tidy_ratio_table(
+  read_pollutant_rdata(file.path(data_dir, "pm10.RData"))$win_ratio,
+  targets = targets
+)
+
+road_raster <- terra::rast(file.path(data_dir, "..", "road_10km_re.tif"))
+uk_with_road <- apply_road_ratio(uk$pred, road_raster, ratio_tbl)
+```
