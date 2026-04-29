@@ -64,3 +64,86 @@ df_to_sf <- function(df, crs = 5181, x = "X", y = "Y") {
   df <- df[stats::complete.cases(df[, c(x, y)]), , drop = FALSE]
   sf::st_as_sf(df, coords = c(x, y), crs = crs, remove = FALSE)
 }
+
+# Internal: normalise date-style identifiers so the day component is
+# always two digits and zero-padded. The legacy archives use two
+# inconsistent conventions:
+#   * data column names:   pm10_1_01_day  (day already zero-padded)
+#   * ratio table Dates:   pm10_1_1_day   (day NOT padded)
+# This helper rewrites the latter into the former so downstream joins
+# work without surprises. Inputs already padded are returned unchanged.
+normalise_date_keys <- function(x) {
+  x <- as.character(x)
+  pat <- "^([A-Za-z0-9]+)_([0-9]+)_([0-9]+)_(day|night)$"
+  m <- regmatches(x, regexec(pat, x))
+  out <- x
+  for (i in seq_along(m)) {
+    parts <- m[[i]]
+    if (length(parts) == 5L) {
+      out[i] <- sprintf("%s_%s_%02d_%s",
+                        parts[2], parts[3],
+                        as.integer(parts[4]), parts[5])
+    }
+  }
+  out
+}
+
+#' Locate the legacy data directory
+#'
+#' The raw `pm10.RData`, `no2.RData`, and `stations_10km.shp` files are
+#' bulky and remain outside the repository (in OneDrive, on a shared
+#' network drive, etc.). This helper resolves a single directory path
+#' from, in order:
+#' \enumerate{
+#'   \item the `path` argument if non-`NULL`,
+#'   \item the `AQSURFACE_DATA_DIR` environment variable,
+#'   \item the `aqsurface.data_dir` R option.
+#' }
+#'
+#' Add a line to `~/.Renviron` such as
+#' `AQSURFACE_DATA_DIR=/Users/you/OneDrive/.../Code/Data` so the path is
+#' picked up automatically in every R session.
+#'
+#' @param path Optional explicit path. When supplied it is returned
+#'   unchanged (after a `dir.exists()` check).
+#' @param required Logical; if `TRUE` (default) and no path resolves,
+#'   throw an error rather than returning `NA`.
+#'
+#' @return A character path, or `NA_character_` when `required = FALSE`
+#'   and nothing resolves.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#'   Sys.setenv(AQSURFACE_DATA_DIR = "~/OneDrive/.../Code/Data")
+#'   aqs_data_dir()
+#' }
+aqs_data_dir <- function(path = NULL, required = TRUE) {
+  candidate <- if (!is.null(path) && nzchar(path)) {
+    path
+  } else if (nzchar(Sys.getenv("AQSURFACE_DATA_DIR"))) {
+    Sys.getenv("AQSURFACE_DATA_DIR")
+  } else if (!is.null(getOption("aqsurface.data_dir"))) {
+    getOption("aqsurface.data_dir")
+  } else {
+    NA_character_
+  }
+  if (is.na(candidate) || !nzchar(candidate)) {
+    if (required) {
+      cli::cli_abort(c(
+        "Cannot resolve a data directory.",
+        "i" = "Set the {.envvar AQSURFACE_DATA_DIR} environment variable,",
+        "i" = "or pass {.arg path} explicitly."
+      ))
+    }
+    return(NA_character_)
+  }
+  candidate <- path.expand(candidate)
+  if (!dir.exists(candidate)) {
+    if (required) {
+      cli::cli_abort("Resolved data directory {.path {candidate}} does not exist.")
+    }
+    return(NA_character_)
+  }
+  candidate
+}

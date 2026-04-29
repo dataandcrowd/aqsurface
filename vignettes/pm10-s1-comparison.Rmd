@@ -12,95 +12,110 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 8,
                       fig.height = 6)
 ```
 
-```{r packages}
+```{r packages, message = FALSE}
 library(aqsurface)
 library(sf)
 library(terra)
+library(dplyr)
 ```
 
-## Data
+## Two ways to load the data
 
-Stations and pollutants are loaded from the legacy archives that ship
-with the original analysis. We split monitors into a training set
-(Fixed background sites) and a held-out set (Road sites).
+`aqsurface` ships with a small Jan S1 sample (objects `pm10_jan_s1`,
+`pm10_jan_s1_road`, `stations_demo`, `ratio_demo`), so the vignette
+knits without any external file. If the `AQSURFACE_DATA_DIR`
+environment variable is set, the vignette switches to the full archive
+instead.
 
-```{r data, eval = FALSE}
-data_dir <- "../Code/Data"
-stations <- make_station_sf(file.path(data_dir, "stations_10km.shp"))
-parts    <- split_stations(stations)
+```{r data}
+have_full_data <- !is.na(aqs_data_dir(required = FALSE))
 
-train_pm10 <- load_pollutant(
-  file.path(data_dir, "pm10.RData"),
-  season = "winter", station_type = "bk",
-  stations = parts$train
-)
+if (have_full_data) {
+  data_dir <- aqs_data_dir()
+  stations <- make_station_sf(file.path(data_dir, "stations_10km.shp"))
+  parts    <- split_stations(stations)
+  train_pm10   <- load_pollutant(file.path(data_dir, "pm10.RData"),
+                                 season = "winter", station_type = "bk",
+                                 stations = parts$train)
+  holdout_pm10 <- load_pollutant(file.path(data_dir, "pm10.RData"),
+                                 season = "winter", station_type = "rd",
+                                 stations = parts$holdout)
+} else {
+  data("stations_demo",       package = "aqsurface")
+  data("pm10_jan_s1",         package = "aqsurface")
+  data("pm10_jan_s1_road",    package = "aqsurface")
+  parts        <- split_stations(stations_demo)
+  train_pm10   <- sf::st_as_sf(pm10_jan_s1,      coords = c("X", "Y"),
+                               crs = 5181, remove = FALSE)
+  holdout_pm10 <- sf::st_as_sf(pm10_jan_s1_road, coords = c("X", "Y"),
+                               crs = 5181, remove = FALSE)
+}
 
 targets <- decade_columns("pm10", month = 1, decade = "S1")
-grid    <- build_prediction_grid(train_pm10, n_x = 200, n_y = 200)
+grid    <- build_prediction_grid(train_pm10, n_x = 100, n_y = 100)
 ```
 
 ## Universal kriging
 
-```{r uk, eval = FALSE}
+```{r uk}
 uk <- predict_surface_batch(
-  data    = train_pm10,
-  targets = targets,
-  newgrid = grid,
-  method  = "uk",
-  trend   = "const",
-  cutoff  = 30000,
-  width   = 3000,
-  model   = "Ste"
+  data      = train_pm10,
+  targets   = targets,
+  newgrid   = grid,
+  algorithm = "uk",
+  trend     = "const",
+  cutoff    = 30000,
+  width     = 3000,
+  model     = "Ste",
+  progress  = FALSE
 )
 
 plot_variogram_grid(uk$models, ncol = 5)
-plot_surface_facet(uk$pred, boundary = NULL, limits = c(0, 150), ncol = 5)
+plot_surface_facet(uk$pred, limits = c(0, 150), ncol = 5)
 ```
 
 ## GAM
 
-```{r gam, eval = FALSE}
+```{r gam}
 gam <- predict_surface_batch(
-  data    = train_pm10,
-  targets = targets,
-  newgrid = grid,
-  method  = "gam",
-  smooth  = "tp",
-  method  = "REML"
+  data      = train_pm10,
+  targets   = targets,
+  newgrid   = grid,
+  algorithm = "gam",
+  smooth    = "tp",
+  method    = "REML",
+  progress  = FALSE
 )
 
 plot_surface_facet(gam$pred, limits = c(0, 150), ncol = 5)
 ```
 
-## Validation against Road monitors
+## Validation against road-side monitors
 
-```{r validation, eval = FALSE}
-holdout_pm10 <- load_pollutant(
-  file.path(data_dir, "pm10.RData"),
-  season = "winter", station_type = "rd",
-  stations = parts$holdout
-)
-
+```{r validation}
 uk_long  <- extract_at_stations(uk$pred,  holdout_pm10, targets)
 gam_long <- extract_at_stations(gam$pred, holdout_pm10, targets)
 
-uk_metrics  <- compute_metrics(uk_long,  by = "target")
-gam_metrics <- compute_metrics(gam_long, by = "target")
-
 dplyr::bind_rows(
-  dplyr::mutate(uk_metrics,  method = "UK"),
-  dplyr::mutate(gam_metrics, method = "GAM")
+  dplyr::mutate(compute_metrics(uk_long),  method = "UK"),
+  dplyr::mutate(compute_metrics(gam_long), method = "GAM")
 )
 ```
 
 ## Road-side post-processing (legacy comparison)
 
-```{r road, eval = FALSE}
-ratio_tbl <- tidy_ratio_table(
-  read_pollutant_rdata(file.path(data_dir, "pm10.RData"))$win_ratio,
-  targets = targets
-)
+The legacy workflow multiplies background interpolations by an empirical
+back-to-road ratio on road pixels. The package keeps this as a separate
+post-processing step rather than folding it into the model.
 
-road_raster <- terra::rast(file.path(data_dir, "..", "road_10km_re.tif"))
-uk_with_road <- apply_road_ratio(uk$pred, road_raster, ratio_tbl)
+```{r road, eval = FALSE}
+# Requires the road raster, only available in AQSURFACE_DATA_DIR.
+if (have_full_data) {
+  ratio_tbl   <- tidy_ratio_table(
+    read_pollutant_rdata(file.path(data_dir, "pm10.RData"))$win_ratio,
+    targets = targets
+  )
+  road_raster <- terra::rast(file.path(data_dir, "..", "road_10km_re.tif"))
+  uk_with_road <- apply_road_ratio(uk$pred, road_raster, ratio_tbl)
+}
 ```

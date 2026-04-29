@@ -6,6 +6,9 @@
 #   devtools::load_all()
 #   source("data-raw/check_equivalence_pm10_01_S1.R")
 #
+# Requires AQSURFACE_DATA_DIR (see ?aqs_data_dir). Add to ~/.Renviron:
+#   AQSURFACE_DATA_DIR=/Users/<you>/OneDrive/.../RJournal/Code/Data
+#
 # Notes:
 # - The legacy RMSE was *in-sample* (predictions extracted at the same
 #   stations used to fit the variogram). We reproduce that here purely
@@ -19,7 +22,7 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 
-data_dir <- "../Code/Data"
+data_dir <- aqs_data_dir()
 stations <- make_station_sf(file.path(data_dir, "stations_10km.shp"))
 parts    <- split_stations(stations)
 
@@ -43,15 +46,15 @@ overrides <- list(
 )
 
 uk <- predict_surface_batch(
-  data    = train,
-  targets = targets,
-  newgrid = grid,
-  method  = "uk",
-  trend   = "coords",          # legacy: krige(... ~ X + Y, ...)
-  cutoff  = 30000,
-  width   = 3000,
-  model   = "Ste",
-  psill   = 100, nugget = 15,
+  data      = train,
+  targets   = targets,
+  newgrid   = grid,
+  algorithm = "uk",
+  trend     = "coords",         # legacy: krige(... ~ X + Y, ...)
+  cutoff    = 30000,
+  width     = 3000,
+  model     = "Ste",
+  psill     = 100, nugget = 15,
   overrides = overrides
 )
 

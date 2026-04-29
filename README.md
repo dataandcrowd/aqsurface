@@ -1,5 +1,11 @@
 # aqsurface
 
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/dataandcrowd/aqsurface/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/dataandcrowd/aqsurface/actions/workflows/R-CMD-check.yaml)
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+<!-- badges: end -->
+
 Reproducible R workflow for comparing universal kriging (`gstat`) and
 generalised additive models (`mgcv`) on hourly urban air-quality
 monitoring data, written to support a planned R Journal article on PM10
@@ -28,9 +34,37 @@ covariate-driven UK / GAM are scheduled for Steps 2 and 3.
 
 ## Installation
 
+From a fresh R session:
+
 ```r
-# Local install while developing
-remotes::install_local("aqsurface", build_vignettes = TRUE)
+# install.packages("remotes")
+remotes::install_github("dataandcrowd/aqsurface", build_vignettes = TRUE)
+```
+
+For local development, clone the repo and use `devtools`:
+
+```r
+# install.packages("devtools")
+devtools::load_all()    # work with the live source
+devtools::test()        # run testthat
+devtools::check()       # full R CMD check
+```
+
+## Pointing at the data
+
+The legacy `pm10.RData`, `no2.RData`, and `stations_10km.shp` are not
+shipped with the package. Tell `aqsurface` where to find them by setting
+an environment variable, ideally in your user-level `~/.Renviron`:
+
+```
+AQSURFACE_DATA_DIR=/Users/you/OneDrive/.../RJournal/Code/Data
+```
+
+Then in R:
+
+```r
+data_dir <- aqs_data_dir()
+stations <- make_station_sf(file.path(data_dir, "stations_10km.shp"))
 ```
 
 ## Validation strategy
@@ -44,3 +78,16 @@ used to fit the variogram, yielding artificially small errors.
 
 A worked example covering PM10, January S1, is shipped as
 `vignettes/pm10-s1-comparison.Rmd`.
+
+## Citation
+
+If this package supports your work, please cite the in-progress R
+Journal article (preprint forthcoming):
+
+> Shin, H. (2026). aqsurface: Spatial Interpolation Surfaces for Urban
+> Air Quality Monitoring. R package version 0.0.1.
+> https://github.com/dataandcrowd/aqsurface
+
+## Licence
+
+MIT (c) Hyesop Shin.

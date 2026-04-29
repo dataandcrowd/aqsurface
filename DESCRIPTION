@@ -5,8 +5,7 @@ Authors@R:
     person(given = "Hyesop",
            family = "Shin",
            role = c("aut", "cre"),
-           email = "hyesop.shin@auckland.ac.nz",
-           comment = c(ORCID = "0000-0000-0000-0000"))
+           email = "hyesop.shin@auckland.ac.nz")
 Description: Reproducible workflow for comparing spatial interpolation methods
     (universal kriging via 'gstat' and generalised additive models via 'mgcv')
     on hourly air pollutant concentrations from urban monitoring networks.
@@ -17,6 +16,7 @@ Description: Reproducible workflow for comparing spatial interpolation methods
     of PM10 and NO2 in Seoul, South Korea.
 License: MIT + file LICENSE
 Encoding: UTF-8
+LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Depends:
@@ -40,5 +40,5 @@ Suggests:
     moments
 Config/testthat/edition: 3
 VignetteBuilder: knitr
-URL: https://github.com/hyesop/aqsurface
-BugReports: https://github.com/hyesop/aqsurface/issues
+URL: https://github.com/dataandcrowd/aqsurface
+BugReports: https://github.com/dataandcrowd/aqsurface/issues

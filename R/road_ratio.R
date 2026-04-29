@@ -78,19 +78,23 @@ apply_road_ratio <- function(surface, road_raster, ratio,
 
 #' Reshape the legacy ratio table into a per-target tibble
 #'
-#' The legacy `pm10.win.ratio` table is keyed by `Dates` strings such as
-#' `pm10_1_05_day`. This helper renames `Dates` to `target` and selects
-#' the columns that [apply_road_ratio()] expects, so the same data
-#' object can be used directly.
+#' The legacy `pm10.win.ratio` table is keyed by `Dates` strings, but
+#' it uses single-digit days (`pm10_1_5_day`) while the matching data
+#' columns use two-digit zero-padded days (`pm10_1_05_day`). This
+#' helper normalises `Dates` to the zero-padded form and selects the
+#' columns that [apply_road_ratio()] expects.
 #'
 #' @param ratio_df Legacy ratio data frame.
-#' @param targets Optional character vector to subset and reorder rows.
+#' @param targets Optional character vector to subset and reorder rows
+#'   (also expected in the zero-padded form, as returned by
+#'   [decade_columns()]).
 #'
-#' @return Tibble with columns `target`, `Back.Road.Ratio`, `Back.High.Ratio`.
+#' @return Tibble with columns `target`, `Back.Road.Ratio`,
+#'   `Back.High.Ratio`.
 #' @export
 tidy_ratio_table <- function(ratio_df, targets = NULL) {
   out <- tibble::tibble(
-    target = as.character(ratio_df$Dates),
+    target = normalise_date_keys(ratio_df$Dates),
     Back.Road.Ratio = as.numeric(ratio_df$Back.Road.Ratio),
     Back.High.Ratio = as.numeric(ratio_df$Back.High.Ratio)
   )

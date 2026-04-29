@@ -14,15 +14,16 @@
 #' @param obs_df Optional long-format `data.frame` with columns
 #'   `Station`, `target`, `obs`. If supplied, observations are taken
 #'   from this table.
-#' @param station_id Column in `stations` to use as a station identifier
-#'   (default `"Station"`).
+#' @param station_id Column in `stations` to use as a station identifier.
+#'   Defaults to `NULL`, which auto-detects the first available among
+#'   `"Station.ID"`, `"Station"`, `"station_id"`, and `"ID"`.
 #'
 #' @return A tibble with columns
-#'   `station`, `target`, `obs`, `pred`, `geometry` (dropped on return),
-#'   `station_type` (if present in `stations`).
+#'   `station`, `target`, `obs`, `pred`, and (if present in `stations`)
+#'   `station_type`.
 #' @export
 extract_at_stations <- function(surface, stations, targets,
-                                obs_df = NULL, station_id = "Station") {
+                                obs_df = NULL, station_id = NULL) {
   if (!inherits(surface, "SpatRaster")) {
     cli::cli_abort("`surface` must be a terra::SpatRaster.")
   }
@@ -34,12 +35,18 @@ extract_at_stations <- function(surface, stations, targets,
     cli::cli_warn("Skipping targets absent from surface: {.val {setdiff(targets, layers_present)}}")
   }
 
+  station_id <- resolve_station_id(stations, station_id)
+
   vec_stations <- terra::vect(stations)
   pred_mat <- terra::extract(surface[[layers_present]], vec_stations)
   pred_mat$ID <- NULL
 
   obs_long <- if (!is.null(obs_df)) {
-    tibble::as_tibble(obs_df)
+    out_obs <- tibble::as_tibble(obs_df)
+    if (!"station" %in% names(out_obs) && station_id %in% names(out_obs)) {
+      out_obs <- dplyr::rename(out_obs, station = !!station_id)
+    }
+    out_obs
   } else {
     sd_df <- sf::st_drop_geometry(stations)
     if (!all(layers_present %in% names(sd_df))) {
@@ -48,7 +55,7 @@ extract_at_stations <- function(surface, stations, targets,
     obs <- sd_df[, c(station_id, layers_present), drop = FALSE]
     tidyr::pivot_longer(
       obs,
-      cols = layers_present,
+      cols = dplyr::all_of(layers_present),
       names_to = "target",
       values_to = "obs"
     ) |>
@@ -59,14 +66,15 @@ extract_at_stations <- function(surface, stations, targets,
   station_meta$.row <- seq_len(nrow(station_meta))
   pred_long <- tidyr::pivot_longer(
     cbind(.row = seq_len(nrow(pred_mat)), pred_mat),
-    cols = layers_present,
+    cols = dplyr::all_of(layers_present),
     names_to = "target",
     values_to = "pred"
   )
+  meta_cols <- c(".row", station_id,
+                 intersect("station_type", names(station_meta)))
   pred_long <- dplyr::left_join(
     pred_long,
-    station_meta[, c(".row", station_id,
-                     intersect("station_type", names(station_meta)))],
+    station_meta[, meta_cols, drop = FALSE],
     by = ".row"
   )
   pred_long <- dplyr::rename(pred_long, station = !!station_id)
@@ -75,6 +83,25 @@ extract_at_stations <- function(surface, stations, targets,
   out <- dplyr::inner_join(pred_long, obs_long,
                            by = c("station", "target"))
   tibble::as_tibble(out)
+}
+
+# Internal: pick a station identifier column out of `stations`.
+resolve_station_id <- function(stations, station_id) {
+  if (!is.null(station_id)) {
+    if (!station_id %in% names(stations)) {
+      cli::cli_abort("Column {.val {station_id}} not found in stations.")
+    }
+    return(station_id)
+  }
+  candidates <- c("Station.ID", "Station", "station_id", "ID")
+  hit <- intersect(candidates, names(stations))
+  if (length(hit) == 0L) {
+    cli::cli_abort(c(
+      "Cannot find a station identifier column.",
+      "i" = "Tried: {.val {candidates}}. Pass {.arg station_id} explicitly."
+    ))
+  }
+  hit[1]
 }
 
 #' Standard validation metrics

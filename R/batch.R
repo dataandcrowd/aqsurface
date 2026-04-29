@@ -9,7 +9,9 @@
 #' @param targets Character vector of response columns (typically the
 #'   output of [decade_columns()]).
 #' @param newgrid Output of [build_prediction_grid()] (a [terra::SpatRaster]).
-#' @param method `"uk"` or `"gam"`.
+#' @param algorithm `"uk"` or `"gam"`. (Renamed from `method` to avoid a
+#'   clash with `mgcv::gam()`'s own `method` argument when forwarded via
+#'   `...`; e.g. `algorithm = "gam", method = "REML"` is now legal.)
 #' @param ... Extra arguments passed to [fit_uk()] or [fit_gam()].
 #' @param overrides Optional named list mapping `target` -> list of
 #'   argument overrides, used to reproduce the per-day variogram tweaks
@@ -25,11 +27,11 @@
 predict_surface_batch <- function(data,
                                   targets,
                                   newgrid,
-                                  method = c("uk", "gam"),
+                                  algorithm = c("uk", "gam"),
                                   ...,
                                   overrides = list(),
                                   progress = TRUE) {
-  method <- match.arg(method)
+  algorithm <- match.arg(algorithm)
   if (!inherits(newgrid, "SpatRaster")) {
     cli::cli_abort("`newgrid` must be a terra::SpatRaster.")
   }
@@ -48,8 +50,13 @@ predict_surface_batch <- function(data,
     if (!is.null(overrides[[tgt]])) {
       args <- utils::modifyList(args, overrides[[tgt]])
     }
-    if (method == "uk") {
-      m <- do.call(fit_uk, args)
+    if (algorithm == "uk") {
+      uk_args <- args[intersect(names(args),
+                                c("data", "target", "trend", "cutoff",
+                                  "width", "model", "psill", "nugget",
+                                  "range", "fit_kappa", "fit_method",
+                                  "crs"))]
+      m <- do.call(fit_uk, uk_args)
       p <- predict_uk(m, newgrid)
       var_layers[[tgt]] <- p$raster_var
       diags[[tgt]] <- single_uk_diag(m)
@@ -69,12 +76,12 @@ predict_surface_batch <- function(data,
 
   pred_stack <- terra::rast(pred_layers)
   names(pred_stack) <- targets
-  var_stack <- if (method == "uk") terra::rast(var_layers) else NULL
+  var_stack <- if (algorithm == "uk") terra::rast(var_layers) else NULL
   if (!is.null(var_stack)) names(var_stack) <- paste0(targets, "_var")
   diag_tbl <- do.call(rbind, diags)
   rownames(diag_tbl) <- NULL
   list(
-    method      = method,
+    algorithm   = algorithm,
     pred        = pred_stack,
     var         = var_stack,
     models      = models,

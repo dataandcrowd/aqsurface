@@ -93,11 +93,14 @@ predict_gam <- function(object, newgrid, se_fit = FALSE) {
   out <- if (se_fit) list(pred = pr$fit, se = pr$se.fit) else list(pred = pr)
 
   if (is_raster) {
-    r_pred <- terra::setValues(template, out$pred)
+    # `predict.gam` returns a named numeric vector; on some terra
+    # versions the names trip the multi-band setValues dispatch, so
+    # strip them with `as.numeric()`.
+    r_pred <- terra::setValues(template, as.numeric(out$pred))
     names(r_pred) <- object$target
     out$raster <- r_pred
     if (se_fit) {
-      r_se <- terra::setValues(template, out$se)
+      r_se <- terra::setValues(template, as.numeric(out$se))
       names(r_se) <- paste0(object$target, "_se")
       out$raster_se <- r_se
     }

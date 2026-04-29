@@ -7,3 +7,5 @@
 ^\.gitignore$
 ^LICENSE\.md$
 ^migrate_to_github\.sh$
+^\.positai$
+^\.claude$

@@ -78,7 +78,7 @@ fit_uk <- function(data,
     cli::cli_warn(
       "Variogram fit failed for {.val {target}}; falling back to spherical."
     )
-    fallback <- gstat::vgm(psill = psill %||% var(data[[target]], na.rm = TRUE),
+    fallback <- gstat::vgm(psill = psill %||% stats::var(data[[target]], na.rm = TRUE),
                            model = "Sph",
                            range = range %||% (cutoff / 2),
                            nugget = nugget %||% 0)

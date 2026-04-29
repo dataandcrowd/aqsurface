@@ -1,7 +1,36 @@
+# R / RStudio working files
 .Rproj.user
 .Rhistory
 .RData
 .Ruserdata
 *.Rproj
+
+# R build artefacts
 inst/doc
 docs/
+*.tar.gz
+*.Rcheck/
+
+# macOS
+.DS_Store
+
+# Large raw data — keep out of git, point at via AQSURFACE_DATA_DIR.
+# (Note: data/*.rda below is the small sample data shipped with the
+# package and IS tracked.)
+*.RData
+*.tif
+*.tiff
+inst/extdata/raw/
+
+# Whitelist the package's bundled sample data
+!data/*.rda
+!data/*.RData
+
+# Local editor / IDE
+.vscode/
+.idea/
+
+# Python virtualenvs (in case anything Python sneaks in)
+.venv/
+__pycache__/
+.positai
