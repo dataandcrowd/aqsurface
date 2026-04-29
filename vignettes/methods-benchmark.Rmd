@@ -1,0 +1,90 @@
+---
+title: "Benchmarking UK and GAM with three validation strategies"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Benchmarking UK and GAM with three validation strategies}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      fig.width = 8, fig.height = 5)
+```
+
+The legacy analysis evaluated UK and GAM with **in-sample** RMSE only,
+which understates true predictive error. This vignette runs three
+complementary validation strategies in one call.
+
+```{r packages, message = FALSE}
+library(aqsurface)
+library(sf)
+library(dplyr)
+library(ggplot2)
+```
+
+## Data
+
+```{r data}
+data("pm10_jan_s1",      package = "aqsurface")
+data("pm10_jan_s1_road", package = "aqsurface")
+
+train <- sf::st_as_sf(pm10_jan_s1, coords = c("X", "Y"),
+                      crs = 5181, remove = FALSE)
+holdout <- sf::st_as_sf(pm10_jan_s1_road, coords = c("X", "Y"),
+                        crs = 5181, remove = FALSE)
+targets <- decade_columns("pm10", month = 1, decade = "S1")
+```
+
+## Run the benchmark
+
+`benchmark_methods()` runs UK and GAM through three strategies and
+returns one tidy tibble.
+
+```{r run}
+results <- benchmark_methods(
+  train      = train,
+  holdout    = holdout,
+  targets    = targets,
+  algorithms = c("uk", "gam"),
+  cv_folds   = 5,
+  fold_method = "kmeans",
+  seed       = 1,
+  progress   = FALSE
+)
+
+results |>
+  dplyr::filter(target == "ALL") |>
+  dplyr::select(algorithm, strategy, n, rmse, mae, bias, r)
+```
+
+## Visualise
+
+```{r plot, fig.height = 4}
+results |>
+  dplyr::filter(target == "ALL") |>
+  ggplot(aes(x = strategy, y = rmse, fill = algorithm)) +
+  geom_col(position = position_dodge(width = 0.6), width = 0.5) +
+  labs(x = NULL, y = "RMSE (μg/m³)",
+       title = "PM10 Jan S1: UK vs GAM across three validation regimes") +
+  theme_bw()
+```
+
+## Interpretation
+
+Three quantities show up cleanly here:
+
+1. **In-sample RMSE** is the smallest for both methods, as expected.
+   This is what the legacy scripts reported.
+2. **Spatial CV RMSE** sits between in-sample and held-out. It
+   quantifies pure spatial extrapolation error within the same
+   monitor population (background-to-background).
+3. **Held-out RMSE** on road-side monitors is the largest, with a
+   negative bias, because the training set is exclusively
+   background and systematically lower than road-side
+   concentrations.
+
+The gap between **spatial CV** and **held-out** is the part of the
+error that any single-population model cannot fix. Step 3 of the
+project will close that gap by adding a road-class covariate to
+both UK (external drift) and GAM (`by`-factor smooth).

@@ -23,14 +23,20 @@ fit_gam()   + predict_gam()                      # GAM with mgcv
 predict_surface_batch()                          # loop over decade columns
 apply_road_ratio()                               # legacy road-side correction
 extract_at_stations() + compute_metrics()        # validation against Road monitors
+spatial_kmeans_folds() + cv_predict()            # spatial cross-validation
+benchmark_methods()                              # UK/GAM x in-sample/CV/held-out
 plot_variogram_grid() / plot_surface_facet()     # publication-style figures
 ```
 
 ## Status
 
-Step 1 of 4: code consolidation and modernisation (sf / terra / cli /
-testthat). Spatial cross-validation, RF / barrier INLA comparators, and
-covariate-driven UK / GAM are scheduled for Steps 2 and 3.
+- **Step 1 — done.** Code consolidation, modernisation to sf/terra/cli/testthat,
+  Fixed-vs-Road validation split, lazy-loaded sample data.
+- **Step 2 — done.** Spatial k-means / block CV, master `benchmark_methods()`
+  entry point, three-strategy comparison vignette.
+- **Step 3 — pending.** Covariate-driven UK (external drift on `Road_Dist` /
+  `DEM`) and GAM (`by`-factor smooth on station type), plus RF baseline.
+- **Step 4 — pending.** Paper rewrite in R Journal style.
 
 ## Installation
 
