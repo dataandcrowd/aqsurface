@@ -46,6 +46,13 @@
 #'   `"block"`. Forwarded to [spatial_kmeans_folds()] /
 #'   [spatial_block_folds()].
 #' @param block_size_m Block size when `fold_method = "block"`.
+#' @param stratify_by Optional `train` column (typically
+#'   `"station_type"`) ensuring every fold's training set contains
+#'   every level of the stratum. Forwarded to
+#'   [spatial_kmeans_folds()] / [spatial_block_folds()]. Use this
+#'   when `covariates` includes a categorical column with few levels,
+#'   to prevent UK with external drift from receiving rank-deficient
+#'   designs in some folds.
 #' @param seed Optional integer; sets the seed before fold creation
 #'   so the benchmark is reproducible.
 #' @param progress Show a progress bar.
@@ -71,6 +78,7 @@ benchmark_methods <- function(train,
                               cv_folds = 5,
                               fold_method = c("kmeans", "block"),
                               block_size_m = 5000,
+                              stratify_by = NULL,
                               seed = 1L,
                               progress = TRUE) {
   fold_method <- match.arg(fold_method)
@@ -81,13 +89,13 @@ benchmark_methods <- function(train,
     if (length(miss_cv) > 0L) {
       cli::cli_abort("`train` is missing covariate columns: {.val {miss_cv}}")
     }
-    uk_args  <- modifyList(uk_args,
-                           list(trend = stats::as.formula(
-                             paste("~", paste(covariates, collapse = " + ")))))
-    gam_args <- modifyList(gam_args,
-                           list(extra_terms = covariates))
-    rf_args  <- modifyList(rf_args,
-                           list(predictors = c("X", "Y", covariates)))
+    uk_args  <- utils::modifyList(uk_args,
+                                  list(trend = stats::as.formula(
+                                    paste("~", paste(covariates, collapse = " + ")))))
+    gam_args <- utils::modifyList(gam_args,
+                                  list(extra_terms = covariates))
+    rf_args  <- utils::modifyList(rf_args,
+                                  list(predictors = c("X", "Y", covariates)))
   }
   if (!inherits(train, "sf")) {
     cli::cli_abort("`train` must be an sf POINT layer.")
@@ -97,10 +105,12 @@ benchmark_methods <- function(train,
     resolve_station_id(holdout, NULL) else NULL
 
   folds <- if (fold_method == "kmeans") {
-    spatial_kmeans_folds(train, k = cv_folds, seed = seed)
+    spatial_kmeans_folds(train, k = cv_folds, seed = seed,
+                         stratify_by = stratify_by)
   } else {
     spatial_block_folds(train, k = cv_folds,
-                        block_size_m = block_size_m, seed = seed)
+                        block_size_m = block_size_m, seed = seed,
+                        stratify_by = stratify_by)
   }
 
   total <- length(algorithms) * length(targets)

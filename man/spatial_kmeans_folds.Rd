@@ -4,7 +4,7 @@
 \alias{spatial_kmeans_folds}
 \title{Spatial k-means folds for cross-validation}
 \usage{
-spatial_kmeans_folds(stations, k = 5, seed = NULL)
+spatial_kmeans_folds(stations, k = 5, seed = NULL, stratify_by = NULL)
 }
 \arguments{
 \item{stations}{An \code{sf} POINT layer (typically the training
@@ -14,6 +14,15 @@ monitors) or a \code{data.frame} with columns \code{X} and \code{Y}.}
 networks (<= 30 stations).}
 
 \item{seed}{Optional integer for reproducibility.}
+
+\item{stratify_by}{Optional column name in \code{stations}
+(typically a factor like \code{station_type}). When supplied, the
+k-means partition is run \strong{within each level} of this column
+and the per-stratum folds are then aligned, so every fold's
+training set contains every level. This is essential when
+downstream models include the column as a covariate (e.g. UK
+with \code{trend = ~ station_type}), where a fold missing one level
+produces a rank-deficient design matrix.}
 }
 \value{
 A list of length \code{k}. Each element is a list with integer
@@ -36,6 +45,7 @@ districts; random k-fold would mask that imbalance.
 \examples{
 \dontrun{
   data("stations_demo", package = "aqsurface")
-  folds <- spatial_kmeans_folds(stations_demo, k = 5, seed = 1)
+  folds <- spatial_kmeans_folds(stations_demo, k = 5, seed = 1,
+                                stratify_by = "station_type")
 }
 }

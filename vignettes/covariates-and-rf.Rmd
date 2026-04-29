@@ -60,12 +60,13 @@ with_cov    <- do.call(benchmark_methods,
 # Combined training: Fixed + Road, with station_type as a factor covariate.
 combined <- combine_stations(train, holdout)
 combined_res <- benchmark_methods(
-  train      = combined,
-  holdout    = NULL,                            # everyone is in train
-  targets    = targets,
-  algorithms = c("uk", "gam", "rf"),
-  covariates = "station_type",
-  cv_folds   = 5, seed = 1, progress = FALSE
+  train       = combined,
+  holdout     = NULL,                           # everyone is in train
+  targets     = targets,
+  algorithms  = c("uk", "gam", "rf"),
+  covariates  = "station_type",
+  stratify_by = "station_type",                 # avoid rank-deficient UK folds
+  cv_folds    = 5, seed = 1, progress = FALSE
 )
 
 results <- dplyr::bind_rows(

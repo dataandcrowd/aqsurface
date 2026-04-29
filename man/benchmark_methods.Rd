@@ -16,6 +16,7 @@ benchmark_methods(
   cv_folds = 5,
   fold_method = c("kmeans", "block"),
   block_size_m = 5000,
+  stratify_by = NULL,
   seed = 1L,
   progress = TRUE
 )
@@ -60,6 +61,14 @@ factor as a covariate.
 \code{\link[=spatial_block_folds]{spatial_block_folds()}}.}
 
 \item{block_size_m}{Block size when \code{fold_method = "block"}.}
+
+\item{stratify_by}{Optional \code{train} column (typically
+\code{"station_type"}) ensuring every fold's training set contains
+every level of the stratum. Forwarded to
+\code{\link[=spatial_kmeans_folds]{spatial_kmeans_folds()}} / \code{\link[=spatial_block_folds]{spatial_block_folds()}}. Use this
+when \code{covariates} includes a categorical column with few levels,
+to prevent UK with external drift from receiving rank-deficient
+designs in some folds.}
 
 \item{seed}{Optional integer; sets the seed before fold creation
 so the benchmark is reproducible.}

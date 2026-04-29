@@ -4,7 +4,13 @@
 \alias{spatial_block_folds}
 \title{Spatial block folds based on a regular grid}
 \usage{
-spatial_block_folds(stations, k = 5, block_size_m = 5000, seed = NULL)
+spatial_block_folds(
+  stations,
+  k = 5,
+  block_size_m = 5000,
+  seed = NULL,
+  stratify_by = NULL
+)
 }
 \arguments{
 \item{stations}{An \code{sf} POINT layer (typically the training
@@ -16,6 +22,15 @@ networks (<= 30 stations).}
 \item{block_size_m}{Block edge length in metres. Default 5000.}
 
 \item{seed}{Optional integer for reproducibility.}
+
+\item{stratify_by}{Optional column name in \code{stations}
+(typically a factor like \code{station_type}). When supplied, the
+k-means partition is run \strong{within each level} of this column
+and the per-stratum folds are then aligned, so every fold's
+training set contains every level. This is essential when
+downstream models include the column as a covariate (e.g. UK
+with \code{trend = ~ station_type}), where a fold missing one level
+produces a rank-deficient design matrix.}
 }
 \value{
 A list of \code{k} folds, same structure as

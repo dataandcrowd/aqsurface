@@ -21,6 +21,25 @@ test_that("spatial_block_folds tiles all stations across k folds", {
   expect_setequal(all_test, seq_len(nrow(stations_demo)))
 })
 
+test_that("stratify_by guarantees every fold spans every stratum", {
+  data("stations_demo", package = "aqsurface")
+  k <- 4
+  folds <- spatial_kmeans_folds(stations_demo, k = k, seed = 11,
+                                stratify_by = "station_type")
+  st <- as.character(stations_demo$station_type)
+  for (f in folds) {
+    expect_setequal(unique(st[f$train]), c("fixed", "road"))
+    expect_true(length(f$test) > 0L)
+  }
+
+  folds_b <- spatial_block_folds(stations_demo, k = k,
+                                 block_size_m = 5000, seed = 13,
+                                 stratify_by = "station_type")
+  for (f in folds_b) {
+    expect_setequal(unique(st[f$train]), c("fixed", "road"))
+  }
+})
+
 test_that("cv_predict produces (obs, pred) per held-out station", {
   skip_if_not_installed("gstat")
   data("pm10_jan_s1", package = "aqsurface")

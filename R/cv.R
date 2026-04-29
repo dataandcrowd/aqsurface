@@ -16,6 +16,14 @@
 #' @param k Number of folds. Defaults to 5; set lower for small
 #'   networks (<= 30 stations).
 #' @param seed Optional integer for reproducibility.
+#' @param stratify_by Optional column name in `stations`
+#'   (typically a factor like `station_type`). When supplied, the
+#'   k-means partition is run **within each level** of this column
+#'   and the per-stratum folds are then aligned, so every fold's
+#'   training set contains every level. This is essential when
+#'   downstream models include the column as a covariate (e.g. UK
+#'   with `trend = ~ station_type`), where a fold missing one level
+#'   produces a rank-deficient design matrix.
 #'
 #' @return A list of length `k`. Each element is a list with integer
 #'   vectors `train` (row indices used to fit) and `test` (row
@@ -25,23 +33,32 @@
 #' @examples
 #' \dontrun{
 #'   data("stations_demo", package = "aqsurface")
-#'   folds <- spatial_kmeans_folds(stations_demo, k = 5, seed = 1)
+#'   folds <- spatial_kmeans_folds(stations_demo, k = 5, seed = 1,
+#'                                 stratify_by = "station_type")
 #' }
-spatial_kmeans_folds <- function(stations, k = 5, seed = NULL) {
+spatial_kmeans_folds <- function(stations, k = 5, seed = NULL,
+                                 stratify_by = NULL) {
   xy <- station_xy(stations)
   if (k < 2L) cli::cli_abort("`k` must be >= 2.")
   if (k > nrow(xy)) {
     cli::cli_abort("`k` ({k}) cannot exceed number of stations ({nrow(xy)}).")
   }
-  if (!is.null(seed)) set.seed(seed)
-  cl <- stats::kmeans(xy, centers = k, nstart = 25)
-  idx <- seq_len(nrow(xy))
-  lapply(seq_len(k), function(i) {
-    list(
-      train = idx[cl$cluster != i],
-      test  = idx[cl$cluster == i]
-    )
-  })
+  if (is.null(stratify_by)) {
+    if (!is.null(seed)) set.seed(seed)
+    cl <- stats::kmeans(xy, centers = k, nstart = 25)
+    idx <- seq_len(nrow(xy))
+    return(lapply(seq_len(k), function(i) {
+      list(train = idx[cl$cluster != i],
+           test  = idx[cl$cluster == i])
+    }))
+  }
+  strata <- stratum_vector(stations, stratify_by)
+  stratify_folds(xy, k, strata, seed,
+                 inner = function(sub_xy, k_sub, sub_seed) {
+                   if (!is.null(sub_seed)) set.seed(sub_seed)
+                   stats::kmeans(sub_xy, centers = k_sub,
+                                 nstart = 25)$cluster
+                 })
 }
 
 #' Spatial block folds based on a regular grid
@@ -59,19 +76,29 @@ spatial_kmeans_folds <- function(stations, k = 5, seed = NULL) {
 #'   [spatial_kmeans_folds()].
 #' @export
 spatial_block_folds <- function(stations, k = 5, block_size_m = 5000,
-                                seed = NULL) {
+                                seed = NULL, stratify_by = NULL) {
   xy <- station_xy(stations)
-  if (!is.null(seed)) set.seed(seed)
-  bx <- floor((xy[, "X"] - min(xy[, "X"])) / block_size_m)
-  by <- floor((xy[, "Y"] - min(xy[, "Y"])) / block_size_m)
-  cell <- paste(bx, by, sep = "_")
-  cells <- unique(cell)
-  cells <- sample(cells)
-  fold_of_cell <- stats::setNames(
-    rep(seq_len(k), length.out = length(cells)),
-    cells
-  )
-  station_fold <- fold_of_cell[cell]
+  block_assign <- function(sub_xy, sub_seed) {
+    if (!is.null(sub_seed)) set.seed(sub_seed)
+    bx <- floor((sub_xy[, "X"] - min(sub_xy[, "X"])) / block_size_m)
+    by <- floor((sub_xy[, "Y"] - min(sub_xy[, "Y"])) / block_size_m)
+    cell <- paste(bx, by, sep = "_")
+    cells <- unique(cell)
+    cells <- sample(cells)
+    fold_of_cell <- stats::setNames(
+      rep(seq_len(k), length.out = length(cells)),
+      cells
+    )
+    unname(fold_of_cell[cell])
+  }
+  if (!is.null(stratify_by)) {
+    strata <- stratum_vector(stations, stratify_by)
+    return(stratify_folds(xy, k, strata, seed,
+                          inner = function(sub_xy, k_sub, sub_seed) {
+                            block_assign(sub_xy, sub_seed)
+                          }))
+  }
+  station_fold <- block_assign(xy, seed)
   idx <- seq_len(nrow(xy))
   lapply(seq_len(k), function(i) {
     list(
@@ -177,6 +204,55 @@ cv_one_fit <- function(train, test, target, algorithm, quiet, ...) {
   fit <- call_quiet(do.call(fit_fn, args))
   pr  <- call_quiet(pred_fn(fit, test))
   pr$pred
+}
+
+# Internal: pull a stratum vector from sf / data.frame.
+stratum_vector <- function(stations, stratify_by) {
+  src <- if (inherits(stations, "sf")) sf::st_drop_geometry(stations)
+         else as.data.frame(stations)
+  if (!stratify_by %in% names(src)) {
+    cli::cli_abort("Column {.val {stratify_by}} not found for stratification.")
+  }
+  vec <- as.character(src[[stratify_by]])
+  if (any(is.na(vec))) {
+    cli::cli_abort("`{stratify_by}` contains NAs; cannot stratify.")
+  }
+  vec
+}
+
+# Internal: run the inner partitioner per stratum, then align fold
+# assignments so every fold contains rows from every stratum.
+stratify_folds <- function(xy, k, strata, seed, inner) {
+  levels_ <- unique(strata)
+  for (lvl in levels_) {
+    n_lvl <- sum(strata == lvl)
+    if (n_lvl < k) {
+      cli::cli_abort(c(
+        "Stratum {.val {lvl}} has only {n_lvl} stations.",
+        "i" = "Reduce {.arg k} or drop the stratum."
+      ))
+    }
+  }
+  station_fold <- integer(nrow(xy))
+  for (i in seq_along(levels_)) {
+    lvl <- levels_[i]
+    sub_idx <- which(strata == lvl)
+    sub_seed <- if (is.null(seed)) NULL else seed + i - 1L
+    sub_assign <- inner(xy[sub_idx, , drop = FALSE], k, sub_seed)
+    # Re-label sub-fold indices to a random permutation so strata are
+    # not aligned trivially (1->1, 2->2, ...) which would still
+    # produce systematic spatial overlap. A random permutation per
+    # stratum is enough; the validity guarantee (every fold spans
+    # every stratum) is preserved by construction.
+    if (!is.null(sub_seed)) set.seed(sub_seed + 1000L)
+    perm <- sample(seq_len(k))
+    station_fold[sub_idx] <- perm[sub_assign]
+  }
+  idx <- seq_len(nrow(xy))
+  lapply(seq_len(k), function(i) {
+    list(train = idx[station_fold != i],
+         test  = idx[station_fold == i])
+  })
 }
 
 # Internal: extract X / Y matrix from sf or data.frame.
