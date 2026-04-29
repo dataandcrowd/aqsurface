@@ -25,11 +25,22 @@
 #'   road-side). Pass `NULL` to skip the held-out strategy.
 #' @param targets Character vector of response columns (typically
 #'   the output of [decade_columns()]).
-#' @param algorithms Character vector; subset of `c("uk", "gam")`.
+#' @param algorithms Character vector; subset of `c("uk", "gam", "rf")`.
+#' @param covariates Optional character vector of covariate columns
+#'   that the user wants every algorithm to use. When supplied, this
+#'   overrides each algorithm's default predictor handling:
+#'   * UK: `trend = ~ <covariates>` (kriging with external drift),
+#'   * GAM: `extra_terms = covariates`,
+#'   * RF: `predictors = c("X", "Y", covariates)`.
+#'   Setting `covariates = "station_type"` together with [combine_stations()]
+#'   trains all three methods on Fixed + Road monitors with the type
+#'   factor as a covariate.
 #' @param uk_args A named list of extra arguments forwarded to
 #'   [fit_uk()] (e.g. `list(trend = "const", cutoff = 30000)`).
 #' @param gam_args A named list of extra arguments forwarded to
 #'   [fit_gam()] (e.g. `list(smooth = "tp", method = "REML")`).
+#' @param rf_args A named list of extra arguments forwarded to
+#'   [fit_rf()] (e.g. `list(num_trees = 500)`).
 #' @param cv_folds Number of spatial folds.
 #' @param fold_method Either `"kmeans"` (default; recommended) or
 #'   `"block"`. Forwarded to [spatial_kmeans_folds()] /
@@ -49,20 +60,35 @@ benchmark_methods <- function(train,
                               holdout = NULL,
                               targets,
                               algorithms = c("uk", "gam"),
+                              covariates = NULL,
                               uk_args = list(trend = "const",
                                              cutoff = 30000,
                                              width = 3000,
                                              model = "Ste"),
                               gam_args = list(smooth = "tp",
                                               method = "REML"),
+                              rf_args  = list(num_trees = 500),
                               cv_folds = 5,
                               fold_method = c("kmeans", "block"),
                               block_size_m = 5000,
                               seed = 1L,
                               progress = TRUE) {
   fold_method <- match.arg(fold_method)
-  algorithms <- match.arg(algorithms, choices = c("uk", "gam"),
+  algorithms <- match.arg(algorithms, choices = c("uk", "gam", "rf"),
                           several.ok = TRUE)
+  if (!is.null(covariates)) {
+    miss_cv <- setdiff(covariates, names(train))
+    if (length(miss_cv) > 0L) {
+      cli::cli_abort("`train` is missing covariate columns: {.val {miss_cv}}")
+    }
+    uk_args  <- modifyList(uk_args,
+                           list(trend = stats::as.formula(
+                             paste("~", paste(covariates, collapse = " + ")))))
+    gam_args <- modifyList(gam_args,
+                           list(extra_terms = covariates))
+    rf_args  <- modifyList(rf_args,
+                           list(predictors = c("X", "Y", covariates)))
+  }
   if (!inherits(train, "sf")) {
     cli::cli_abort("`train` must be an sf POINT layer.")
   }
@@ -85,7 +111,10 @@ benchmark_methods <- function(train,
   rows <- list()
 
   for (alg in algorithms) {
-    extra <- if (alg == "uk") uk_args else gam_args
+    extra <- switch(alg,
+                    uk  = uk_args,
+                    gam = gam_args,
+                    rf  = rf_args)
     for (tgt in targets) {
       train_t <- train[!is.na(train[[tgt]]), , drop = FALSE]
 
@@ -146,25 +175,43 @@ benchmark_methods <- function(train,
 
 # Internal: tolerant fit dispatch used by benchmark_methods.
 safe_fit <- function(algorithm, args) {
-  fn <- if (algorithm == "uk") fit_uk else fit_gam
-  keep <- if (algorithm == "uk") {
-    c("data", "target", "trend", "cutoff", "width", "model",
-      "psill", "nugget", "range", "fit_kappa", "fit_method", "crs")
-  } else {
-    c("data", "target", "smooth", "k", "method", "extra_terms")
-  }
-  args <- args[intersect(names(args), keep)]
+  bits <- alg_dispatch(algorithm)
+  args <- args[intersect(names(args), bits$keep)]
   tryCatch(
-    suppressWarnings(suppressMessages(do.call(fn, args))),
+    suppressWarnings(suppressMessages(do.call(bits$fit, args))),
     error = function(e) NULL
   )
 }
 
 safe_pred <- function(algorithm, fit, newdata) {
-  fn <- if (algorithm == "uk") predict_uk else predict_gam
+  bits <- alg_dispatch(algorithm)
   pr <- tryCatch(
-    suppressWarnings(suppressMessages(fn(fit, newdata))),
+    suppressWarnings(suppressMessages(bits$pred(fit, newdata))),
     error = function(e) NULL
   )
   if (is.null(pr)) rep(NA_real_, nrow(newdata)) else pr$pred
+}
+
+alg_dispatch <- function(algorithm) {
+  switch(algorithm,
+    uk = list(
+      fit  = fit_uk,
+      pred = predict_uk,
+      keep = c("data", "target", "trend", "cutoff", "width", "model",
+               "psill", "nugget", "range", "fit_kappa", "fit_method",
+               "crs")
+    ),
+    gam = list(
+      fit  = fit_gam,
+      pred = predict_gam,
+      keep = c("data", "target", "smooth", "k", "method", "extra_terms")
+    ),
+    rf = list(
+      fit  = fit_rf,
+      pred = predict_rf,
+      keep = c("data", "target", "predictors", "num_trees",
+               "respect_unordered_factors")
+    ),
+    cli::cli_abort("Unknown algorithm: {.val {algorithm}}")
+  )
 }

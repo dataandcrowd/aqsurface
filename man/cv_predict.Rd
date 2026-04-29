@@ -8,7 +8,7 @@ cv_predict(
   data,
   target,
   folds,
-  algorithm = c("uk", "gam"),
+  algorithm = c("uk", "gam", "rf"),
   ...,
   station_id = NULL,
   quiet = TRUE

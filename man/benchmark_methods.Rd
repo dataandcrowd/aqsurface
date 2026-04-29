@@ -9,8 +9,10 @@ benchmark_methods(
   holdout = NULL,
   targets,
   algorithms = c("uk", "gam"),
+  covariates = NULL,
   uk_args = list(trend = "const", cutoff = 30000, width = 3000, model = "Ste"),
   gam_args = list(smooth = "tp", method = "REML"),
+  rf_args = list(num_trees = 500),
   cv_folds = 5,
   fold_method = c("kmeans", "block"),
   block_size_m = 5000,
@@ -28,13 +30,28 @@ road-side). Pass \code{NULL} to skip the held-out strategy.}
 \item{targets}{Character vector of response columns (typically
 the output of \code{\link[=decade_columns]{decade_columns()}}).}
 
-\item{algorithms}{Character vector; subset of \code{c("uk", "gam")}.}
+\item{algorithms}{Character vector; subset of \code{c("uk", "gam", "rf")}.}
+
+\item{covariates}{Optional character vector of covariate columns
+that the user wants every algorithm to use. When supplied, this
+overrides each algorithm's default predictor handling:
+\itemize{
+\item UK: \verb{trend = ~ <covariates>} (kriging with external drift),
+\item GAM: \code{extra_terms = covariates},
+\item RF: \code{predictors = c("X", "Y", covariates)}.
+Setting \code{covariates = "station_type"} together with \code{\link[=combine_stations]{combine_stations()}}
+trains all three methods on Fixed + Road monitors with the type
+factor as a covariate.
+}}
 
 \item{uk_args}{A named list of extra arguments forwarded to
 \code{\link[=fit_uk]{fit_uk()}} (e.g. \code{list(trend = "const", cutoff = 30000)}).}
 
 \item{gam_args}{A named list of extra arguments forwarded to
 \code{\link[=fit_gam]{fit_gam()}} (e.g. \code{list(smooth = "tp", method = "REML")}).}
+
+\item{rf_args}{A named list of extra arguments forwarded to
+\code{\link[=fit_rf]{fit_rf()}} (e.g. \code{list(num_trees = 500)}).}
 
 \item{cv_folds}{Number of spatial folds.}
 

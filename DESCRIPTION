@@ -37,7 +37,8 @@ Suggests:
     knitr,
     rmarkdown,
     gridExtra,
-    moments
+    moments,
+    ranger (>= 0.16.0)
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 URL: https://github.com/dataandcrowd/aqsurface

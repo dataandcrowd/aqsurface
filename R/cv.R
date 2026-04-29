@@ -108,7 +108,7 @@ spatial_block_folds <- function(stations, k = 5, block_size_m = 5000,
 #'   `fold`.
 #' @export
 cv_predict <- function(data, target, folds,
-                       algorithm = c("uk", "gam"),
+                       algorithm = c("uk", "gam", "rf"),
                        ...,
                        station_id = NULL,
                        quiet = TRUE) {
@@ -154,41 +154,29 @@ cv_predict <- function(data, target, folds,
 
 # Internal: fit + predict at test points for a single fold.
 cv_one_fit <- function(train, test, target, algorithm, quiet, ...) {
-  if (algorithm == "uk") {
-    args <- list(data = train, target = target, ...)
-    args <- args[intersect(names(args),
-                           c("data", "target", "trend", "cutoff",
-                             "width", "model", "psill", "nugget",
-                             "range", "fit_kappa", "fit_method",
-                             "crs"))]
-    fit <- if (quiet) {
-      suppressWarnings(suppressMessages(do.call(fit_uk, args)))
-    } else {
-      do.call(fit_uk, args)
-    }
-    pr <- if (quiet) {
-      suppressWarnings(suppressMessages(predict_uk(fit, test)))
-    } else {
-      predict_uk(fit, test)
-    }
-    pr$pred
-  } else {
-    args <- list(data = train, target = target, ...)
-    args <- args[intersect(names(args),
-                           c("data", "target", "smooth", "k",
-                             "method", "extra_terms"))]
-    fit <- if (quiet) {
-      suppressWarnings(suppressMessages(do.call(fit_gam, args)))
-    } else {
-      do.call(fit_gam, args)
-    }
-    pr <- if (quiet) {
-      suppressWarnings(suppressMessages(predict_gam(fit, test)))
-    } else {
-      predict_gam(fit, test)
-    }
-    pr$pred
+  call_quiet <- function(expr) {
+    if (quiet) suppressWarnings(suppressMessages(expr)) else expr
   }
+  if (algorithm == "uk") {
+    keep <- c("data", "target", "trend", "cutoff", "width", "model",
+              "psill", "nugget", "range", "fit_kappa", "fit_method",
+              "crs")
+    fit_fn <- fit_uk; pred_fn <- predict_uk
+  } else if (algorithm == "gam") {
+    keep <- c("data", "target", "smooth", "k", "method", "extra_terms")
+    fit_fn <- fit_gam; pred_fn <- predict_gam
+  } else if (algorithm == "rf") {
+    keep <- c("data", "target", "predictors", "num_trees",
+              "respect_unordered_factors")
+    fit_fn <- fit_rf; pred_fn <- predict_rf
+  } else {
+    cli::cli_abort("Unknown algorithm: {.val {algorithm}}")
+  }
+  args <- list(data = train, target = target, ...)
+  args <- args[intersect(names(args), keep)]
+  fit <- call_quiet(do.call(fit_fn, args))
+  pr  <- call_quiet(pred_fn(fit, test))
+  pr$pred
 }
 
 # Internal: extract X / Y matrix from sf or data.frame.

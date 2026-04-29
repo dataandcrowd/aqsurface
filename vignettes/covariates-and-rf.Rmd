@@ -1,0 +1,109 @@
+---
+title: "Covariate-driven UK / GAM / RF and the bias-on-roads question"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Covariate-driven UK / GAM / RF and the bias-on-roads question}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      fig.width = 8, fig.height = 5)
+```
+
+Step 2 of the project showed that universal kriging and a thin-plate
+GAM are statistically indistinguishable under spatial cross-validation,
+but both produce a systematic bias of roughly -4 µg/m³ when applied to
+held-out road-side monitors after training on the background network.
+
+This vignette asks whether **adding covariates** (or **combining
+stations with a `station_type` factor**) closes that bias.
+
+```{r packages, message = FALSE}
+library(aqsurface)
+library(sf)
+library(dplyr)
+library(ggplot2)
+```
+
+## Sample data with `Road_Dist` + `DEM`
+
+```{r data}
+data("pm10_jan_s1",      package = "aqsurface")
+data("pm10_jan_s1_road", package = "aqsurface")
+data("stations_demo",    package = "aqsurface")
+
+meta <- sf::st_drop_geometry(stations_demo)[, c("Station", "Road_Dist", "DEM")]
+
+attach_meta <- function(df) {
+  out <- merge(df, meta, by.x = "Station.ID", by.y = "Station")
+  sf::st_as_sf(out, coords = c("X", "Y"), crs = 5181, remove = FALSE)
+}
+
+train   <- attach_meta(pm10_jan_s1)
+holdout <- attach_meta(pm10_jan_s1_road)
+targets <- decade_columns("pm10", month = 1, decade = "S1")
+```
+
+## Three scenarios
+
+```{r scenarios}
+common <- list(train = train, holdout = holdout, targets = targets,
+               algorithms = c("uk", "gam", "rf"),
+               cv_folds = 5, seed = 1, progress = FALSE)
+
+baseline    <- do.call(benchmark_methods, common)
+with_cov    <- do.call(benchmark_methods,
+                       c(common, list(covariates = c("Road_Dist", "DEM"))))
+
+# Combined training: Fixed + Road, with station_type as a factor covariate.
+combined <- combine_stations(train, holdout)
+combined_res <- benchmark_methods(
+  train      = combined,
+  holdout    = NULL,                            # everyone is in train
+  targets    = targets,
+  algorithms = c("uk", "gam", "rf"),
+  covariates = "station_type",
+  cv_folds   = 5, seed = 1, progress = FALSE
+)
+
+results <- dplyr::bind_rows(
+  dplyr::mutate(baseline,     scenario = "baseline"),
+  dplyr::mutate(with_cov,     scenario = "Road_Dist + DEM"),
+  dplyr::mutate(combined_res, scenario = "combined + station_type")
+) |>
+  dplyr::filter(target == "ALL")
+
+results |>
+  dplyr::select(scenario, algorithm, strategy, n, rmse, bias, r)
+```
+
+## Reading the table
+
+The legacy bias of about -4 µg/m³ should drop sharply when we add
+`station_type` to a combined-station training set, because the model
+can now learn an explicit road-vs-background offset rather than
+having to extrapolate it. RF is expected to gain the most because it
+can interact `station_type` with location non-linearly.
+
+```{r plot}
+results |>
+  ggplot(aes(x = strategy, y = rmse, fill = scenario)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  facet_wrap(~ algorithm) +
+  labs(x = NULL, y = "RMSE (μg/m³)",
+       title = "PM10 Jan S1: covariates and RF vs the baseline") +
+  theme_bw()
+```
+
+## Caveats
+
+* The RF in-sample RMSE is, like UK in-sample, biased downward
+  because trees see every training row in some sub-sample.
+* The combined-station scenario has no `held-out` strategy because
+  road monitors are now in the training set; the spatial-cv result
+  is the cleanest summary number.
+* Real-world deployment would also want random k-fold CV across
+  stations with at least 10-20 repeats; we use a single seed for
+  this vignette to keep the runtime small.
