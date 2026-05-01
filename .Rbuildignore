@@ -7,5 +7,6 @@
 ^\.gitignore$
 ^LICENSE\.md$
 ^migrate_to_github\.sh$
+^paper$
 ^\.positai$
 ^\.claude$

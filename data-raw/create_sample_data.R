@@ -47,8 +47,41 @@ if (length(missing_bk) > 0L) {
 pm10_jan_s1      <- raw$win_bk[, keep_cols]
 pm10_jan_s1_road <- raw$win_rd[, keep_cols]
 
+# ---- Same decade for NO2 ------------------------------------------------
+no2_path <- file.path(data_dir, "no2.RData")
+if (file.exists(no2_path)) {
+  raw_no2     <- read_pollutant_rdata(no2_path, pollutant = "no2")
+  jan_s1_no2  <- decade_columns("no2", month = 1, decade = "S1")
+  keep_no2    <- c("X", "Y", "Station.ID", jan_s1_no2)
+  if (all(jan_s1_no2 %in% names(raw_no2$win_bk))) {
+    no2_jan_s1      <- raw_no2$win_bk[, keep_no2]
+    no2_jan_s1_road <- raw_no2$win_rd[, keep_no2]
+  } else {
+    no2_jan_s1 <- no2_jan_s1_road <- NULL
+    warning("NO2 archive missing some Jan S1 columns; skipping.")
+  }
+} else {
+  no2_jan_s1 <- no2_jan_s1_road <- NULL
+}
+
 # ---- Stations ------------------------------------------------------------
 stations_demo <- make_station_sf(file.path(data_dir, "stations_10km.shp"))
+
+# ---- Seoul administrative boundary --------------------------------------
+# Provides a backdrop for figure plots (e.g. fig-stations in paper/). We
+# simplify the polygon to keep the bundle small (~20 KB) while preserving
+# the visual outline.
+seoul_path <- file.path(data_dir, "Seoul_City.shp")
+if (file.exists(seoul_path)) {
+  seoul_boundary <- sf::read_sf(seoul_path)
+  seoul_boundary <- sf::st_transform(seoul_boundary, 5181)
+  seoul_boundary <- sf::st_simplify(seoul_boundary,
+                                    dTolerance = 50,
+                                    preserveTopology = TRUE)
+} else {
+  seoul_boundary <- NULL
+  warning("Seoul_City.shp not found; seoul_boundary will not ship.")
+}
 
 # ---- Ratio rows for the same decade -------------------------------------
 # The legacy ratio table uses unpadded day numbers (pm10_1_5_day) while
@@ -68,6 +101,13 @@ usethis::use_data(
   overwrite = TRUE,
   compress  = "xz"
 )
+if (!is.null(seoul_boundary)) {
+  usethis::use_data(seoul_boundary, overwrite = TRUE, compress = "xz")
+}
+if (!is.null(no2_jan_s1)) {
+  usethis::use_data(no2_jan_s1, no2_jan_s1_road,
+                    overwrite = TRUE, compress = "xz")
+}
 
 message("Done. Bundle sizes:")
 print(file.info(list.files("data", full.names = TRUE))[

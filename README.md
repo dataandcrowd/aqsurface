@@ -39,7 +39,10 @@ plot_variogram_grid() / plot_surface_facet()     # publication-style figures
 - **Step 3 — done.** Covariate-driven UK (external drift on `Road_Dist` / `DEM`),
   GAM (`extra_terms`), Random Forest baseline (`ranger`), `combine_stations()`
   for Fixed + Road training with `station_type` factor, scenario-comparison vignette.
-- **Step 4 — pending.** Paper rewrite in R Journal style.
+- **Step 4 — first complete draft.** R Journal manuscript at
+  `paper/aqsurface-rjournal.Rmd`, with `figures.R` to regenerate every table
+  and figure. Headline thesis: validation strategy and covariate inclusion
+  govern reproducibility more than algorithm choice.
 
 ## Installation
 

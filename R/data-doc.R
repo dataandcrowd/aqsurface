@@ -51,3 +51,38 @@
 #'   `Back.High.Ratio`.
 #' @source As [pm10_jan_s1].
 "ratio_demo"
+
+#' Seoul administrative boundary (simplified)
+#'
+#' A simplified MULTIPOLYGON of the Seoul Special City administrative
+#' boundary, intended as a visual backdrop for figures
+#' (see `paper/aqsurface-rjournal.qmd`). The polygon was simplified
+#' with a 50 m tolerance to keep the package data bundle small while
+#' preserving the recognisable outline.
+#'
+#' @format An `sf` MULTIPOLYGON layer with one feature, in EPSG:5181
+#'   (Korea Central Belt 2000).
+#' @source Seoul Metropolitan Government via the Korea Environment
+#'   Corporation, simplified by `data-raw/create_sample_data.R`.
+"seoul_boundary"
+
+#' NO2 background concentrations: Seoul, January 1-10
+#'
+#' Companion to [pm10_jan_s1] for the second pollutant. Same 57
+#' background monitors and 20 day-night Jan S1 columns, but in
+#' parts-per-billion (ppb) rather than micrograms per cubic metre.
+#'
+#' @format A data frame with 57 rows and 23 columns: `X`, `Y`,
+#'   `Station.ID`, plus 20 numeric columns named
+#'   `no2_1_01_day` ... `no2_1_10_night`.
+#' @source As [pm10_jan_s1].
+"no2_jan_s1"
+
+#' NO2 road-side concentrations: Seoul, January 1-10
+#'
+#' Companion to [pm10_jan_s1_road] for the second pollutant.
+#'
+#' @format A data frame with 19 rows and the same 23 columns as
+#'   [no2_jan_s1].
+#' @source As [pm10_jan_s1].
+"no2_jan_s1_road"

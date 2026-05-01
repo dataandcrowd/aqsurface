@@ -1,11 +1,11 @@
-# Full PM10 benchmark across all 5 months × 3 decade-windows for the
-# winter and summer pollutant archives. Produces one master tibble of
-# results and writes it to inst/extdata/benchmark_pm10.rds for the
-# R Journal article's headline figure.
+# Full NO2 benchmark across all 5 months (12, 1, 2, 8, 9) x 3 decade
+# windows. Mirror of `run_benchmark_pm10.R` for the second pollutant
+# in the legacy archive. Combined with the PM10 sweep, the resulting
+# rds files form the empirical backbone of the R Journal paper.
 #
 # Run from the package root after AQSURFACE_DATA_DIR is set:
 #   devtools::load_all()
-#   source("data-raw/run_benchmark_pm10.R")
+#   source("data-raw/run_benchmark_no2.R")
 #
 # Expected runtime: ~5-10 minutes on a modern laptop.
 
@@ -18,16 +18,15 @@ data_dir <- aqs_data_dir()
 stations <- make_station_sf(file.path(data_dir, "stations_10km.shp"))
 parts    <- split_stations(stations)
 
-# Run one (season, month, decade) cell of the benchmark.
 benchmark_cell <- function(season, month, decade) {
-  pollutant_path <- file.path(data_dir, "pm10.RData")
+  pollutant_path <- file.path(data_dir, "no2.RData")
   train <- load_pollutant(pollutant_path,
                           season = season, station_type = "bk",
                           stations = parts$train)
   holdout <- load_pollutant(pollutant_path,
                             season = season, station_type = "rd",
                             stations = parts$holdout)
-  targets <- decade_columns("pm10", month = month, decade = decade)
+  targets <- decade_columns("no2", month = month, decade = decade)
   targets <- intersect(targets, names(train))
   if (length(targets) == 0L) return(NULL)
 
@@ -46,7 +45,6 @@ benchmark_cell <- function(season, month, decade) {
                   .before = "algorithm")
 }
 
-# Plan: winter = months 12, 1, 2; summer = months 8, 9.
 plan <- dplyr::bind_rows(
   expand.grid(season = "winter", month = c(12, 1, 2),
               decade = c("S1", "S2", "S3"),
@@ -56,7 +54,7 @@ plan <- dplyr::bind_rows(
               stringsAsFactors = FALSE)
 )
 
-cli::cli_h1("Running {nrow(plan)} (season, month, decade) cells")
+cli::cli_h1("Running {nrow(plan)} (season, month, decade) cells for NO2")
 
 results <- vector("list", nrow(plan))
 for (i in seq_len(nrow(plan))) {
@@ -66,12 +64,12 @@ for (i in seq_len(nrow(plan))) {
                                  plan$decade[i])
 }
 
-benchmark_pm10 <- dplyr::bind_rows(results)
+benchmark_no2 <- dplyr::bind_rows(results)
 dir.create("inst/extdata", showWarnings = FALSE, recursive = TRUE)
-saveRDS(benchmark_pm10,
-        file = "inst/extdata/benchmark_pm10.rds",
+saveRDS(benchmark_no2,
+        file = "inst/extdata/benchmark_no2.rds",
         compress = "xz")
 
 cli::cli_alert_success(
-  "Saved {nrow(benchmark_pm10)} rows to inst/extdata/benchmark_pm10.rds"
+  "Saved {nrow(benchmark_no2)} rows to inst/extdata/benchmark_no2.rds"
 )

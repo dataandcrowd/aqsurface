@@ -118,7 +118,9 @@ benchmark_methods <- function(train,
     cli::cli_progress_bar("Benchmarking", total = total)
   }
 
-  rows <- list()
+  rows     <- list()
+  timings  <- list()
+  tic <- function() proc.time()[["elapsed"]]
 
   for (alg in algorithms) {
     extra <- switch(alg,
@@ -131,39 +133,52 @@ benchmark_methods <- function(train,
       # in-sample
       fit_args <- c(list(data = train_t, target = tgt), extra)
       fit_args <- fit_args[!duplicated(names(fit_args))]
-      fit <- safe_fit(alg, fit_args)
+      t0  <- tic(); fit <- safe_fit(alg, fit_args); fit_t <- tic() - t0
       if (!is.null(fit)) {
-        pred_in <- safe_pred(alg, fit, train_t)
-        in_sample <- tibble::tibble(
+        t0 <- tic(); pred_in <- safe_pred(alg, fit, train_t); pred_t <- tic() - t0
+        rows[[length(rows) + 1L]] <- tibble::tibble(
           algorithm = alg, strategy = "in-sample", target = tgt,
           obs = train_t[[tgt]], pred = pred_in
         )
-        rows[[length(rows) + 1L]] <- in_sample
+        timings[[length(timings) + 1L]] <- tibble::tibble(
+          algorithm = alg, strategy = "in-sample", target = tgt,
+          time_s = fit_t + pred_t
+        )
       }
 
-      # spatial CV
+      # spatial CV (per-fold timing averaged)
       cv_args <- c(list(data = train_t, target = tgt, folds = folds,
                         algorithm = alg,
                         station_id = station_id_train,
                         quiet = TRUE),
                    extra)
       cv_args <- cv_args[!duplicated(names(cv_args))]
-      cv_long <- do.call(cv_predict, cv_args)
+      t0 <- tic(); cv_long <- do.call(cv_predict, cv_args); cv_t <- tic() - t0
       if (nrow(cv_long) > 0L) {
         rows[[length(rows) + 1L]] <- tibble::tibble(
           algorithm = alg, strategy = "spatial-cv", target = tgt,
           obs = cv_long$obs, pred = cv_long$pred
         )
+        timings[[length(timings) + 1L]] <- tibble::tibble(
+          algorithm = alg, strategy = "spatial-cv", target = tgt,
+          # time per fold so the figure compares per-fit cost across
+          # algorithms rather than total cv cost
+          time_s = cv_t / max(length(folds), 1L)
+        )
       }
 
-      # held-out
+      # held-out (reuses in-sample fit)
       if (!is.null(holdout) && !is.null(fit)) {
         ho_t <- holdout[!is.na(holdout[[tgt]]), , drop = FALSE]
         if (nrow(ho_t) > 0L) {
-          pred_ho <- safe_pred(alg, fit, ho_t)
+          t0 <- tic(); pred_ho <- safe_pred(alg, fit, ho_t); pred_t <- tic() - t0
           rows[[length(rows) + 1L]] <- tibble::tibble(
             algorithm = alg, strategy = "held-out", target = tgt,
             obs = ho_t[[tgt]], pred = pred_ho
+          )
+          timings[[length(timings) + 1L]] <- tibble::tibble(
+            algorithm = alg, strategy = "held-out", target = tgt,
+            time_s = fit_t + pred_t
           )
         }
       }
@@ -179,7 +194,26 @@ benchmark_methods <- function(train,
   per_target <- compute_metrics(long, by = c("algorithm", "strategy", "target"))
   overall <- compute_metrics(long, by = c("algorithm", "strategy")) |>
     dplyr::mutate(target = "ALL", .before = "n")
-  dplyr::bind_rows(per_target, overall) |>
+  metrics <- dplyr::bind_rows(per_target, overall)
+
+  timings_tbl <- dplyr::bind_rows(timings)
+  if (nrow(timings_tbl) > 0L) {
+    per_target_t <- timings_tbl |>
+      dplyr::group_by(.data$algorithm, .data$strategy, .data$target) |>
+      dplyr::summarise(time_s = sum(.data$time_s), .groups = "drop")
+    overall_t <- timings_tbl |>
+      dplyr::group_by(.data$algorithm, .data$strategy) |>
+      dplyr::summarise(time_s = mean(.data$time_s), .groups = "drop") |>
+      dplyr::mutate(target = "ALL")
+    all_timings <- dplyr::bind_rows(per_target_t, overall_t)
+    metrics <- dplyr::left_join(
+      metrics, all_timings,
+      by = c("algorithm", "strategy", "target")
+    )
+  } else {
+    metrics$time_s <- NA_real_
+  }
+  metrics |>
     dplyr::arrange(.data$algorithm, .data$strategy, .data$target)
 }
 
