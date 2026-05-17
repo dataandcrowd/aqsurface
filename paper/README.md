@@ -1,78 +1,110 @@
 # R Journal manuscript: aqsurface
 
-Companion to the [aqsurface](https://github.com/dataandcrowd/aqsurface)
-R package.
+Companion source for the article submitted to the R Journal under
+the *Comparisons and benchmarking* track.
 
 ## Files
 
 ```
 paper/
-├── aqsurface-rjournal.qmd     # Quarto source (recommended)
-├── aqsurface-rjournal.Rmd     # R Markdown alternative (rjtools template)
-├── figures.R                   # regenerates the cached results + figures
-├── benchmark_results.rds       # cached output of figures.R
-├── references.bib              # 373 bibliography entries
-├── figures/                    # ggsave outputs
-└── README.md                   # this file
+├── aqsurface-rjournal.qmd            Quarto source (recommended)
+├── aqsurface-rjournal.Rmd            R Markdown alternative
+├── references.bib                    bibliography (cited entries only)
+├── figures.R                         regenerates caches (optional)
+├── benchmark_results.rds             cached: 3-scenario benchmark (Jan S1 demo)
+├── disagreement_data.rds             cached: per-station paradigm SD
+├── surface_target.rds                cached: auto-selected representative day
+└── figures/
+    ├── stations.png
+    ├── strategy.png
+    ├── bias.png
+    ├── speed.png
+    ├── boxplot_paradigms.png
+    ├── paradigm_disagreement_map.png
+    └── surface_comparison.png
 ```
 
-## Quarto build (recommended)
+The two `inst/extdata/benchmark_*.rds` files inside the package
+also feed this manuscript (the full 5-month × 3-decade ×
+2-pollutant sweep used for `@tbl-robustness` and `@fig-boxplot`).
+
+## Building the manuscript (under one minute)
+
+The manuscript reads only from disk caches. No heavy computation
+is required at render time.
 
 ```bash
-# One-off
-brew install --cask quarto      # or download from https://quarto.org
+# One-off: install Quarto (https://quarto.org)
+brew install --cask quarto
 ```
 
 ```r
-# Step 1: regenerate the cached benchmark results (~30 seconds)
-devtools::load_all()
-source("paper/figures.R")
-
-# Step 2: render
-quarto::quarto_render("paper/aqsurface-rjournal.qmd")
+# install.packages(c("devtools", "quarto", "rjtools"))
+devtools::load_all()                                  # exposes aqsurface
+quarto::quarto_render("paper/aqsurface-rjournal.qmd") # < 1 minute
 ```
 
 Produces both `aqsurface-rjournal.html` and `aqsurface-rjournal.pdf`
-side by side. The qmd has a setup chunk that auto-detects whether
+side by side. The Quarto setup chunk auto-detects whether
 aqsurface is installed; if not, it falls back to
-`pkgload::load_all("..")` so the document renders without requiring
-a prior `R CMD INSTALL`.
+`pkgload::load_all("..")` so the document renders from a clean
+clone without `R CMD INSTALL`.
+
+## Regenerating the caches (optional, 2-3 minutes)
+
+Run only when you have changed package code or the demo data.
+
+```r
+devtools::load_all()
+source("paper/figures.R")    # writes benchmark_results.rds, surface_target.rds,
+                             # and all paper/figures/*.png
+```
+
+The full PM10 / NO2 sweeps that back `@tbl-robustness` and
+`@fig-boxplot` are stored in `inst/extdata/` and only need
+re-running if the legacy raw data is updated. Both scripts
+expect the `AQSURFACE_DATA_DIR` environment variable to point at
+the directory containing `pm10.RData`, `no2.RData`, and
+`stations_10km.shp` (see `?aqs_data_dir`).
+
+```r
+source("data-raw/run_benchmark_pm10.R")   # ~5 minutes
+source("data-raw/run_benchmark_no2.R")    # ~5 minutes
+```
+
+## Reproducibility summary for reviewers
+
+| Step | Runtime | Required for paper render? |
+|---|---|---|
+| `quarto_render("paper/aqsurface-rjournal.qmd")` | ~1 min | yes |
+| `source("paper/figures.R")` | 2-3 min | optional (caches in git) |
+| `source("data-raw/run_benchmark_pm10.R")` | ~5 min | optional (cache in git) |
+| `source("data-raw/run_benchmark_no2.R")` | ~5 min | optional (cache in git) |
+
+Total time to render the manuscript from a clean clone, without
+re-running any benchmark, is under one minute. This satisfies the
+R Journal guideline that submissions must be reproducible in
+under ten minutes.
 
 ## R Markdown build (alternative)
 
+The Quarto source is recommended. An R Markdown version is also
+provided for reviewers who prefer `rmarkdown::render()`:
+
 ```r
 install.packages("rjtools")
-devtools::install(".")          # ★ required: subprocess can't see load_all()
+devtools::install(".")        # required: rmarkdown's callr subprocess
 source("paper/figures.R")
 rmarkdown::render("paper/aqsurface-rjournal.Rmd")
 ```
 
-The Rmd uses `library(aqsurface)` directly, which means the package
-must be installed system-wide before rendering, because rmarkdown
-spawns a callr subprocess that does not inherit `devtools::load_all()`
-state. The qmd version sidesteps this by using `pkgload::load_all()`
-in its setup chunk.
-
-## Updating numbers
-
-`figures.R` writes `benchmark_results.rds`; the manuscript inlines
-literal numbers from that file. After any package change, re-run
-`figures.R` and update the `tibble::tribble(...)` block in the
-"results" section.
-
-A future improvement: replace the inline tribble with a direct
-`readRDS("benchmark_results.rds")` read so the numbers update
-automatically. We deferred that so the document still renders if
-the rds cache is missing.
+The Rmd uses `library(aqsurface)` directly, so the package must
+be installed system-wide before rendering. The Quarto source
+sidesteps this by using `pkgload::load_all()`.
 
 ## Status
 
-- 2026-04-29: first complete draft (Rmd + qmd parallel sources).
-  Methods, Results and Discussion sections written; introduction
-  draws on the PhD-thesis literature review chapter; numbers come
-  from running the package's three benchmark scenarios on the
-  shipped Jan S1 demo bundle.
-- Next: full benchmark on the OneDrive `pm10.RData` archive
-  (`data-raw/run_benchmark_pm10.R`) to test the headline findings
-  across five months and two pollutants; rewrite the Discussion
-  in light of that wider sweep.
+- 2026-05-01: complete draft, R Journal "Comparisons and
+  benchmarking" track.
+- All caches (`.rds`, `.png`, `.rda`) committed to git.
+- Manuscript renders under one minute from a clean clone.

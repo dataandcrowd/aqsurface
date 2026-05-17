@@ -1,12 +1,26 @@
-# Reproduce every result reported in `aqsurface-rjournal.Rmd`.
-# Run from the package root:
+# Cache-generation script for the R Journal manuscript.
+# ---------------------------------------------------------------
+# Reviewers and readers do NOT need to run this to reproduce the
+# rendered paper. All cached outputs that the manuscript depends
+# on are committed to git:
 #
-#   devtools::load_all()
+#   paper/benchmark_results.rds     (504 rows, three scenarios)
+#   paper/disagreement_data.rds     (station-level paradigm SD)
+#   paper/surface_target.rds        (auto-selected representative day)
+#   paper/figures/*.png             (all 7 figures)
+#   inst/extdata/benchmark_pm10.rds (full 5-month sweep, PM10)
+#   inst/extdata/benchmark_no2.rds  (full 5-month sweep, NO2)
+#
+# Rendering the manuscript with these caches in place takes well
+# under one minute and reads only from disk. The script below
+# *regenerates* the caches by re-running benchmark_methods() and
+# the surface fits; total runtime is roughly 2-3 minutes on a
+# modern laptop. Run it only when you have changed the package or
+# the demo data.
+#
+# Usage (after `devtools::load_all()` from the repo root):
+#
 #   source("paper/figures.R")
-#
-# The script writes one cached object (paper/benchmark_results.rds)
-# that the Rmd loads. Splitting computation from typesetting keeps
-# `rmarkdown::render()` fast and deterministic.
 
 suppressPackageStartupMessages({
   library(aqsurface)
